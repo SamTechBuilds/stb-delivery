@@ -119,3 +119,25 @@ test("rate limited", async ({ page }) => {
   await page.goto(`/#${TOKEN}`);
   await expect(page.getByRole("heading", { name: "Too many attempts" })).toBeVisible();
 });
+
+test("private token: only in the API request body, never in URLs, headers or third-party requests", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const seen: { url: string; headers: Record<string, string>; body: string | null }[] = [];
+  page.on("request", (req) => seen.push({ url: req.url(), headers: req.headers(), body: req.postData() }));
+  await mock(page, payload());
+  await page.goto(`/#${TOKEN}`);
+  await expect(page.getByRole("button", { name: "Open your gift" })).toBeVisible();
+  await page.getByRole("button", { name: "Open your gift" }).click();
+  await expect(page.getByRole("button", { name: "See your project" })).toBeVisible({ timeout: 4000 });
+
+  expect(seen.filter((r) => r.url.includes(TOKEN))).toEqual([]); // not in any URL, including the API URL
+  const api = seen.filter((r) => r.url === API);
+  expect(api.length).toBeGreaterThan(0);
+  for (const r of api) {
+    expect(r.body).toContain(TOKEN); // the token travels only in the POST body
+    expect(r.headers["referer"]).toBeUndefined(); // Referrer-Policy: no-referrer
+  }
+  const origin = new URL(`http://127.0.0.1:4173`).origin;
+  const external = seen.filter((r) => !r.url.startsWith(origin) && !r.url.startsWith(IMG) && !r.url.startsWith(API));
+  expect(external).toEqual([]); // no analytics or other third parties receive the page load
+});

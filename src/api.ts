@@ -2,6 +2,8 @@ import type { ApiError, DeliveryPayload } from "./types";
 
 export const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
+const SS_KEY = "stb-delivery-token";
+
 /**
  * Tokens travel in the URL fragment (`/#<token>`), which browsers never send to the server or in
  * the Referer header. `/reveal/<token>` is accepted for hand-typed links but is not generated.
@@ -11,6 +13,45 @@ export function readToken(loc: Pick<Location, "hash" | "pathname"> = window.loca
   if (TOKEN_RE.test(fromHash)) return fromHash;
   const m = loc.pathname.match(/\/reveal\/([A-Za-z0-9_-]{43})\/?$/);
   return m ? m[1] : null;
+}
+
+/**
+ * Read the token from the URL fragment or sessionStorage, then scrub the fragment from the
+ * address bar and browser history so the token does not persist in navigation history.
+ *
+ * Recovery path (refresh, back/forward):
+ *   - On first visit: token is in the hash → stored to sessionStorage → hash is cleared.
+ *   - On reload or return: hash is gone, token is recovered from sessionStorage.
+ *   - On error (not_found / rate_limited): call clearSessionToken() to remove the stale entry.
+ *
+ * The token is never sent to the server. sessionStorage is scoped to the tab and cleared when
+ * the tab closes, so it does not persist across sessions.
+ */
+export function readTokenWithFallback(): string | null {
+  const fromUrl = readToken();
+  if (fromUrl) {
+    // Scrub the fragment from the address bar without adding a history entry.
+    // This runs synchronously before the first render.
+    try {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    } catch { /* private browsing may block history API */ }
+    // Store in sessionStorage so refresh and back/forward navigation can recover the token.
+    try {
+      sessionStorage.setItem(SS_KEY, fromUrl);
+    } catch { /* storage quota or private browsing */ }
+    return fromUrl;
+  }
+  // Hash is gone — try sessionStorage (refresh or back/forward navigation).
+  try {
+    const stored = sessionStorage.getItem(SS_KEY);
+    if (stored && TOKEN_RE.test(stored)) return stored;
+  } catch { /* private browsing */ }
+  return null;
+}
+
+/** Remove the session token after a definitive failure (not_found, bad_request). */
+export function clearSessionToken(): void {
+  try { sessionStorage.removeItem(SS_KEY); } catch { /* ok */ }
 }
 
 export class DeliveryApiError extends Error {

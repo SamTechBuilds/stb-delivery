@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { readToken, openDelivery, requestFile, DeliveryApiError } from "../src/api";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readToken, readTokenWithFallback, clearSessionToken, openDelivery, requestFile, DeliveryApiError } from "../src/api";
 import { buildVCard, daysUntil, safeUrl, videoEmbed, whatsappLink, formatBytes } from "../src/format";
 
 const T = "Abc123_-Abc123_-Abc123_-Abc123_-Abc123_-xyz";
@@ -15,6 +15,61 @@ describe("readToken", () => {
     for (const hash of ["", "#", "#short", `#${T}x`, `#${T.slice(0, 42)}!`, "#<script>"]) {
       expect(readToken({ hash, pathname: "/" })).toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readTokenWithFallback / clearSessionToken — fragment scrubbing and session
+// ---------------------------------------------------------------------------
+describe("readTokenWithFallback", () => {
+  beforeEach(() => {
+    // Reset location and sessionStorage before each test.
+    sessionStorage.clear();
+    history.replaceState(null, "", "/");
+  });
+
+  it("reads the token from the hash and scrubs the fragment from the URL", () => {
+    history.replaceState(null, "", `/#${T}`);
+    const tok = readTokenWithFallback();
+    expect(tok).toBe(T);
+    // The hash should be gone — replaceState was called.
+    expect(window.location.hash).toBe("");
+  });
+
+  it("stores the token in sessionStorage so a reload can recover it", () => {
+    history.replaceState(null, "", `/#${T}`);
+    readTokenWithFallback();
+    // Simulate a reload: hash is now gone, URL is clean.
+    expect(window.location.hash).toBe("");
+    // The token must be recoverable from sessionStorage.
+    const recovered = readTokenWithFallback();
+    expect(recovered).toBe(T);
+  });
+
+  it("returns null when neither hash nor sessionStorage holds a valid token", () => {
+    history.replaceState(null, "", "/");
+    expect(readTokenWithFallback()).toBeNull();
+  });
+
+  it("ignores a malformed sessionStorage entry", () => {
+    sessionStorage.setItem("stb-delivery-token", "not-a-valid-token!@#");
+    expect(readTokenWithFallback()).toBeNull();
+  });
+
+  it("clearSessionToken removes the entry so a reload returns null", () => {
+    history.replaceState(null, "", `/#${T}`);
+    readTokenWithFallback();                // stores in sessionStorage
+    clearSessionToken();                    // simulates definitive failure
+    expect(readTokenWithFallback()).toBeNull(); // sessionStorage is gone
+  });
+
+  it("URL access from /reveal/<token> path is preserved (no fragment to scrub)", () => {
+    history.replaceState(null, "", `/reveal/${T}`);
+    const tok = readTokenWithFallback();
+    // readToken delegates to the pathname form; no hash to clear.
+    expect(tok).toBe(T);
+    // pathname is unchanged — replaceState only clears the hash.
+    expect(window.location.pathname).toBe(`/reveal/${T}`);
   });
 });
 

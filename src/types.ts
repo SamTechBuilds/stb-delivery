@@ -3,6 +3,8 @@
 
 export type Theme = "midnight" | "aurora" | "ivory";
 
+export type SectionKey = "walkthrough" | "screens" | "handover" | "support" | "card";
+
 export interface ChecklistItem {
   label: string;
   done?: boolean;
@@ -23,6 +25,10 @@ export interface DeliveryInfo {
   handover_checklist: ChecklistItem[];
   support_contact_note: string | null;
   closing_message: string | null;
+  /** Added in STB Core 0007. Absent on older responses: treat as true. */
+  reveal_gift?: boolean;
+  /** Visible sections in the owner's order. Absent on older responses: all sections, default order. */
+  sections?: SectionKey[];
 }
 
 export interface SupportInfo {

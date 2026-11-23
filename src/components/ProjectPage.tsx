@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import type { Asset, DeliveryPayload } from "../types";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { sectionOrder } from "../sections";
+import type { Asset, DeliveryPayload, SectionKey } from "../types";
 import { daysUntil, formatBytes, formatDate, hostOf, safeUrl, supportProgress, videoEmbed, whatsappLink } from "../format";
 import { VisitingCard } from "./VisitingCard";
 
@@ -11,14 +12,72 @@ interface Props {
 
 export function ProjectPage({ data, onDownload, onReplay }: Props) {
   const { delivery: d, support, card, assets } = data;
-  const shots = assets.filter((a) => a.kind === "screenshot" && a.url);
-  const docs = assets.filter((a) => a.kind === "document");
+  const order = sectionOrder(d.sections);
+  const on = (key: SectionKey) => order.includes(key);
+
+  const shots = on("screens") ? assets.filter((a) => a.kind === "screenshot" && a.url) : [];
+  const docs = on("handover") ? assets.filter((a) => a.kind === "document") : [];
   const live = safeUrl(d.live_url);
   const embed = videoEmbed(d.video_url);
   const videoLink = !embed ? safeUrl(d.video_url) : null;
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => { headingRef.current?.focus(); }, []);
+
+  // Each client-facing block is built once, then placed in the owner's order. Hidden blocks are null.
+  const blocks: Record<SectionKey, ReactNode> = {
+    walkthrough: on("walkthrough") && (embed || videoLink) ? (
+      <section className="block" aria-labelledby="video-h">
+        <h2 id="video-h">Walkthrough</h2>
+        {embed ? (
+          <div className="video">
+            <iframe src={embed} title={`${d.project_title} walkthrough`} loading="lazy"
+              allow="encrypted-media; picture-in-picture; fullscreen" referrerPolicy="strict-origin-when-cross-origin" />
+          </div>
+        ) : (
+          <a className="btn btn--ghost" href={videoLink!} target="_blank" rel="noopener noreferrer">Watch the walkthrough</a>
+        )}
+      </section>
+    ) : null,
+    screens: shots.length > 1 ? <Gallery shots={shots.slice(1)} /> : null,
+    handover: on("handover") && (docs.length > 0 || d.handover_checklist.length > 0) ? (
+      <section className="block" aria-labelledby="handover-h">
+        <h2 id="handover-h">Your handover</h2>
+        <p className="block__lead">Everything you need to run your website. Download links are created when you click and last two minutes.</p>
+        <div className="handover">
+          {docs.length > 0 && (
+            <ul className="files">
+              {docs.map((doc) => <FileRow key={doc.id} asset={doc} onDownload={onDownload} />)}
+            </ul>
+          )}
+          {d.handover_checklist.length > 0 && (
+            <div className="checklist">
+              <h3>Handover checklist</h3>
+              <ul>
+                {d.handover_checklist.map((item, i) => (
+                  <li key={i} className={item.done ? "is-done" : ""}>
+                    <span className="checklist__mark" aria-hidden="true">{item.done ? "✓" : ""}</span>
+                    {item.label}
+                    <span className="sr-only">{item.done ? " (done)" : " (to do)"}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </section>
+    ) : null,
+    support: on("support") && support ? (
+      <SupportBlock support={support} note={d.support_contact_note} whatsapp={card?.whatsapp ?? null}
+        email={card?.email ?? null} phone={card?.phone ?? null} hours={card?.support_hours ?? null} project={d.project_title} />
+    ) : null,
+    card: on("card") && card ? (
+      <section className="block block--card" aria-labelledby="card-h">
+        <h2 id="card-h">Keep in touch</h2>
+        <VisitingCard card={card} compact />
+      </section>
+    ) : null,
+  };
 
   return (
     <main className="page" id="project">
@@ -52,59 +111,7 @@ export function ProjectPage({ data, onDownload, onReplay }: Props) {
         )}
       </header>
 
-      {shots.length > 1 && <Gallery shots={shots.slice(1)} />}
-
-      {(embed || videoLink) && (
-        <section className="block" aria-labelledby="video-h">
-          <h2 id="video-h">Walkthrough</h2>
-          {embed ? (
-            <div className="video">
-              <iframe src={embed} title={`${d.project_title} walkthrough`} loading="lazy"
-                allow="encrypted-media; picture-in-picture; fullscreen" referrerPolicy="strict-origin-when-cross-origin" />
-            </div>
-          ) : (
-            <a className="btn btn--ghost" href={videoLink!} target="_blank" rel="noopener noreferrer">Watch the walkthrough</a>
-          )}
-        </section>
-      )}
-
-      {(docs.length > 0 || d.handover_checklist.length > 0) && (
-        <section className="block" aria-labelledby="handover-h">
-          <h2 id="handover-h">Your handover</h2>
-          <p className="block__lead">Everything you need to run your website. Download links are created when you click and last two minutes.</p>
-          <div className="handover">
-            {docs.length > 0 && (
-              <ul className="files">
-                {docs.map((doc) => <FileRow key={doc.id} asset={doc} onDownload={onDownload} />)}
-              </ul>
-            )}
-            {d.handover_checklist.length > 0 && (
-              <div className="checklist">
-                <h3>Handover checklist</h3>
-                <ul>
-                  {d.handover_checklist.map((item, i) => (
-                    <li key={i} className={item.done ? "is-done" : ""}>
-                      <span className="checklist__mark" aria-hidden="true">{item.done ? "✓" : ""}</span>
-                      {item.label}
-                      <span className="sr-only">{item.done ? " (done)" : " (to do)"}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {support && <SupportBlock support={support} note={d.support_contact_note} whatsapp={card?.whatsapp ?? null}
-        email={card?.email ?? null} phone={card?.phone ?? null} hours={card?.support_hours ?? null} project={d.project_title} />}
-
-      {card && (
-        <section className="block block--card" aria-labelledby="card-h">
-          <h2 id="card-h">Keep in touch</h2>
-          <VisitingCard card={card} compact />
-        </section>
-      )}
+      {order.map((key) => <Fragment key={key}>{blocks[key]}</Fragment>)}
 
       <footer className="page__footer">
         {d.closing_message && <p className="page__closing">{d.closing_message}</p>}
