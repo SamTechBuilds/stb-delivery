@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { deleteTemplate, listTemplates, saveTemplate, type TemplateRecord } from "../data";
 import { friendlyError } from "../lib/errors";
+import { TEMPLATE_PRESETS, presetSeed, type TemplatePreset } from "../lib/presets";
 import { ConfirmButton, Notice, PageHead } from "../ui";
 
 type Msg = { kind: "error" | "ok"; text: string } | null;
@@ -15,6 +16,7 @@ export function TemplatesPage() {
   const [msg, setMsg] = useState<Msg>(null);
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<TemplateRecord | "new" | null>(null);
+  const [preset, setPreset] = useState<TemplatePreset | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -39,9 +41,27 @@ export function TemplatesPage() {
       <PageHead
         title="Templates"
         lead="Reusable wording, theme and section order for new deliveries. Templates never hold client details."
-        actions={<button type="button" className="a-btn" onClick={() => setEditing("new")}>New template</button>}
+        actions={<button type="button" className="a-btn a-btn--primary" onClick={() => { setPreset(null); setEditing("new"); }}>New template</button>}
       />
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      {editing === null && (
+        <section className="a-panel" aria-labelledby="presets-heading">
+          <h2 id="presets-heading">Start from a preset</h2>
+          <p className="a-muted">Pick a starting point. You can change every word and setting before you save.</p>
+          <div className="a-preset-grid">
+            {TEMPLATE_PRESETS.map((p) => (
+              <article key={p.id} className="a-preset">
+                <span className={`a-preset__swatch a-preset__swatch--${p.theme}`} aria-hidden="true" />
+                <h3>{p.name}</h3>
+                <p className="a-muted">{p.description}</p>
+                <button type="button" className="a-btn a-btn--small" onClick={() => { setPreset(p); setEditing("new"); }}>
+                  Use {p.name}
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="a-panel">
         {templates?.length === 0 && <p className="a-muted">No templates yet. Create one here, or use Save as template in a delivery's Builder.</p>}
         <ul className="a-list">
@@ -65,6 +85,7 @@ export function TemplatesPage() {
         <TemplateEditor
           key={editing === "new" ? "new" : editing.id}
           template={editing === "new" ? null : editing}
+          seed={editing === "new" && preset ? presetSeed(preset) : null}
           onDone={(text) => { setEditing(null); setMsg({ kind: "ok", text }); setVersion((v) => v + 1); }}
           onError={(text) => setMsg({ kind: "error", text })}
         />
@@ -73,19 +94,21 @@ export function TemplatesPage() {
   );
 }
 
-function TemplateEditor({ template, onDone, onError }: {
+function TemplateEditor({ template, seed, onDone, onError }: {
   template: TemplateRecord | null;
+  seed: Partial<TemplateRecord> | null;
   onDone: (text: string) => void;
   onError: (text: string) => void;
 }) {
-  const [name, setName] = useState(template?.name ?? "");
-  const [theme, setTheme] = useState<TemplateRecord["theme"]>(template?.theme ?? "midnight");
-  const [reveal, setReveal] = useState(template?.reveal_gift ?? true);
-  const [welcomeTitle, setWelcomeTitle] = useState(template?.welcome_title ?? "");
-  const [welcomeMessage, setWelcomeMessage] = useState(template?.welcome_message ?? "");
-  const [supportNote, setSupportNote] = useState(template?.support_contact_note ?? "");
-  const [closing, setClosing] = useState(template?.closing_message ?? "");
-  const [layout] = useState(template?.section_layout ?? [
+  const base: Partial<TemplateRecord> | null = template ?? seed;
+  const [name, setName] = useState(template?.name ?? seed?.name ?? "");
+  const [theme, setTheme] = useState<TemplateRecord["theme"]>(base?.theme ?? "midnight");
+  const [reveal, setReveal] = useState(base?.reveal_gift ?? true);
+  const [welcomeTitle, setWelcomeTitle] = useState(base?.welcome_title ?? "");
+  const [welcomeMessage, setWelcomeMessage] = useState(base?.welcome_message ?? "");
+  const [supportNote, setSupportNote] = useState(base?.support_contact_note ?? "");
+  const [closing, setClosing] = useState(base?.closing_message ?? "");
+  const [layout] = useState(base?.section_layout ?? [
     { key: "walkthrough" as const, visible: true }, { key: "screens" as const, visible: true },
     { key: "handover" as const, visible: true }, { key: "support" as const, visible: true }, { key: "card" as const, visible: true },
   ]);
@@ -138,7 +161,7 @@ function TemplateEditor({ template, onDone, onError }: {
         <label htmlFor="t-sn">Support note<textarea id="t-sn" rows={2} value={supportNote} onChange={(e) => setSupportNote(e.target.value)} /></label>
         <label htmlFor="t-cm">Closing message<textarea id="t-cm" rows={2} value={closing} onChange={(e) => setClosing(e.target.value)} /></label>
       </div>
-      <button type="button" className="a-btn" disabled={saving} onClick={() => void save()}>Save template</button>
+      <button type="button" className="a-btn a-btn--primary" disabled={saving} onClick={() => void save()}>Save template</button>
     </div>
   );
 }

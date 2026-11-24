@@ -110,8 +110,10 @@ test("dead links get one clear message", async ({ page }) => {
   await page.goto(`/#${TOKEN}`);
   await expect(page.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
   if (shots) await page.screenshot({ path: "test-results/10-not-found.png" });
+  // The root with no token is the owner entry point now, not a client link.
   await page.goto(`/`);
-  await expect(page.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This link isn't active" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
 test("rate limited", async ({ page }) => {
@@ -140,4 +142,26 @@ test("private token: only in the API request body, never in URLs, headers or thi
   const origin = new URL(`http://127.0.0.1:4173`).origin;
   const external = seen.filter((r) => !r.url.startsWith(origin) && !r.url.startsWith(IMG) && !r.url.startsWith(API));
   expect(external).toEqual([]); // no analytics or other third parties receive the page load
+});
+
+test("legacy /reveal/:token opens the client delivery and stays on that URL", async ({ page }) => {
+  await mock(page, payload());
+  await page.goto(`/reveal/${TOKEN}`);
+  await expect(page.getByText("Priya", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/reveal/${TOKEN}$`));
+});
+
+test("an invalid /reveal token shows the dead-link message, not the admin sign-in", async ({ page }) => {
+  await mock(page, { status: 404 });
+  await page.goto(`/reveal/${TOKEN}`);
+  await expect(page.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+});
+
+test("an unknown public slug shows the dead-link message", async ({ page }) => {
+  await page.route("**/delivery-public/**", (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "x" }) }));
+  await page.goto("/no-such-delivery");
+  await expect(page.getByRole("heading", { name: "This project wasn't found" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
 });

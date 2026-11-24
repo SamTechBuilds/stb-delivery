@@ -2,7 +2,8 @@
  * STB Delivery — routing.
  *
  * Route table (most specific first; React Router ranks static paths above /:slug):
- *   /                  → Private token delivery (reads the token from the #fragment)
+ *   /                  → Client token delivery if a token is in the #fragment or held in this tab;
+ *                        otherwise the owner entry point (/admin → sign-in or dashboard)
  *   /reveal/:token     → Private token delivery (legacy path form)
  *   /login             → Owner sign-in (admin)
  *   /admin, /admin/*   → Owner dashboard (admin, behind RequireOwner)
@@ -15,6 +16,7 @@
  */
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import { TokenDelivery } from "./pages/TokenDelivery";
+import { RootEntry } from "./RootEntry";
 import { SlugDelivery } from "./pages/SlugDelivery";
 import { NotFound } from "./pages/NotFound";
 import { adminRoutes } from "./admin/routes";
@@ -24,7 +26,7 @@ export function App() {
     <BrowserRouter>
       <Routes>
         {/* Private token delivery: the token is read from #fragment or /reveal/:token */}
-        <Route path="/" element={<TokenDelivery />} />
+        <Route path="/" element={<RootEntry />} />
         <Route path="/reveal/:token" element={<TokenDelivery />} />
 
         {/* Owner admin: sign-in, dashboard and management pages */}

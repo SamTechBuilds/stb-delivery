@@ -193,3 +193,33 @@ test.describe("two-step sign-in (MFA)", () => {
     await shot(page, "13-mfa-off-desktop");
   });
 });
+
+test.describe("root entry", () => {
+  test.use({ viewport: { width: 1366, height: 860 } });
+
+  test("root shows owner sign-in when signed out, dashboard when signed in", async ({ page }) => {
+    const db = seed();
+    await installAdminMock(page, db);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "This link isn't active" })).toHaveCount(0);
+    await signIn(page);
+    await page.goto("/");
+    await expect(page.getByRole("navigation", { name: "Admin" })).toBeVisible();
+    await expect(page).toHaveURL(/\/admin$/);
+  });
+});
+
+test("a template preset pre-fills the editor and is saved only when the owner saves", async ({ page }) => {
+  const db = seed();
+  await installAdminMock(page, db);
+  await signIn(page);
+  await page.goto("/admin/templates");
+  await page.getByRole("heading", { name: "Start from a preset" }).waitFor();
+  await page.getByRole("button", { name: "Use Print-minded" }).click();
+  await expect(page.getByLabel("Welcome title")).toHaveValue("Your project, delivered");
+  await expect(page.getByLabel("Theme")).toHaveValue("ivory");
+  expect(db.tables.delivery_templates ?? []).toHaveLength(0);
+  await page.getByRole("button", { name: "Save template" }).click();
+  await expect(page.getByText(/Saved "Print-minded"/)).toBeVisible();
+});

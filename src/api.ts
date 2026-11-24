@@ -16,6 +16,21 @@ export function readToken(loc: Pick<Location, "hash" | "pathname"> = window.loca
 }
 
 /**
+ * True when this tab is holding a private client delivery: a token in the URL, or one already
+ * stored for refresh and back/forward. Read-only: it does not scrub the URL or store anything,
+ * so the root route can decide between client delivery and the admin entry before the token
+ * is consumed by TokenDelivery.
+ */
+export function hasClientToken(): boolean {
+  if (readToken() !== null) return true;
+  try {
+    return sessionStorage.getItem(SS_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Read the token from the URL fragment or sessionStorage, then scrub the fragment from the
  * address bar and browser history so the token does not persist in navigation history.
  *
