@@ -129,7 +129,7 @@ export function SlugDelivery() {
       ) : (
         <div className="wrap">
           <p className="wrap__brand">{data.card?.brand_name ?? "Sam Tech Builds"}</p>
-          <GiftBox delivery={data.delivery} stage={giftStage} onOpen={open} onSkip={toPage}>
+          <GiftBox delivery={data.delivery} giftItems={data.gift_items} stage={giftStage} onOpen={open} onSkip={toPage}>
             {stage === "card" && (
               <div className="card-stage">
                 {data.card && <VisitingCard card={data.card} />}

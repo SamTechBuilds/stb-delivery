@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
-  addAsset, deleteAsset, issueLink, revokeLink, signAsset, updateAsset,
-  type AssetRecord, type EventRecord, type TokenRecord,
+  addAsset, addGiftItem, deleteAsset, deleteGiftItem, issueLink, revokeLink, signAsset, updateAsset,
+  type AssetRecord, type EventRecord, type GiftItemRecord, type TokenRecord,
 } from "../data";
 import { privateLink, randomToken, sha256Hex, tokenHint } from "../lib/tokens";
 import { friendlyError } from "../lib/errors";
@@ -9,6 +9,7 @@ import { ConfirmButton, Notice, formatDate, formatWhen, origin } from "../ui";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const PREVIEW_MINUTES = 60;
+const ZIP_TYPES = ["application/zip", "application/x-zip-compressed", "application/x-zip", "application/octet-stream"];
 type Msg = { kind: "error" | "ok" | "info"; text: string } | null;
 const errText = (e: unknown) => friendlyError(e as { code?: string; message?: string });
 
@@ -22,35 +23,63 @@ export function FilesPanel({ deliveryId, assets, onChanged }: {
   const [kind, setKind] = useState<"screenshot" | "document">("screenshot");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [fileKey, setFileKey] = useState(0);
+  const [progress, setProgress] = useState("");
 
   const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title));
 
+  function isZipFile(f: File): boolean {
+    return ZIP_TYPES.includes(f.type) || f.name.toLowerCase().endsWith(".zip");
+  }
+
   function checkFile(f: File): string | null {
-    if (f.size === 0) return "That file is empty.";
-    if (f.size > MAX_FILE_BYTES) return "Files must be 50 MB or smaller.";
-    if (kind === "screenshot" && !f.type.startsWith("image/")) return "Screens must be image files, such as PNG, JPEG or WebP.";
+    if (f.size === 0) return `"${f.name}" is empty.`;
+    if (f.size > MAX_FILE_BYTES) return `"${f.name}" exceeds 50 MB.`;
+    if (kind === "screenshot" && !f.type.startsWith("image/") && !isZipFile(f)) {
+      return `"${f.name}" must be an image (PNG, JPEG, WebP) or a ZIP archive.`;
+    }
     return null;
   }
 
   async function upload() {
-    if (!file || title.trim() === "") { setMsg({ kind: "error", text: "Choose a file and give it a title." }); return; }
-    const problem = checkFile(file);
-    if (problem) { setMsg({ kind: "error", text: problem }); return; }
+    if (files.length === 0) { setMsg({ kind: "error", text: "Choose one or more files to upload." }); return; }
+    // For single file, title is required; for bulk, we auto-name
+    if (files.length === 1 && title.trim() === "") { setMsg({ kind: "error", text: "Give the file a title." }); return; }
+
+    // Validate all files first
+    for (const f of files) {
+      const problem = checkFile(f);
+      if (problem) { setMsg({ kind: "error", text: problem }); return; }
+    }
+
     setBusy(true);
+    let uploaded = 0;
+    const total = files.length;
     try {
-      await addAsset(deliveryId, {
-        kind, title: title.trim().slice(0, 120), description: description.trim() || null, file,
-        sortOrder: sorted.length ? Math.max(...sorted.map((a) => a.sort_order)) + 1 : 0,
-      });
-      setMsg({ kind: "ok", text: "Uploaded. It is visible to the client once the delivery is published." });
-      setTitle(""); setDescription(""); setFile(null); setFileKey((k) => k + 1);
+      let nextOrder = sorted.length ? Math.max(...sorted.map((a) => a.sort_order)) + 1 : 0;
+      for (const f of files) {
+        setProgress(`Uploading ${++uploaded} of ${total}: ${f.name}`);
+        const fileTitle = files.length === 1
+          ? title.trim().slice(0, 120)
+          : f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").slice(0, 120) || `File ${uploaded}`;
+        await addAsset(deliveryId, {
+          kind,
+          title: fileTitle,
+          description: files.length === 1 ? (description.trim() || null) : null,
+          file: f,
+          sortOrder: nextOrder++,
+        });
+      }
+      const word = total === 1 ? "file" : `${total} files`;
+      setMsg({ kind: "ok", text: `Uploaded ${word}. Visible to the client once the delivery is published.` });
+      setTitle(""); setDescription(""); setFiles([]); setFileKey((k) => k + 1);
       await onChanged();
     } catch (e) {
-      setMsg({ kind: "error", text: errText(e) });
+      setMsg({ kind: "error", text: `${errText(e)} (${uploaded} of ${total} uploaded before the error)` });
     } finally {
       setBusy(false);
+      setProgress("");
     }
   }
 
@@ -82,10 +111,17 @@ export function FilesPanel({ deliveryId, assets, onChanged }: {
     } catch (e) { setMsg({ kind: "error", text: errText(e) }); }
   }
 
+  const fileAccept = kind === "screenshot"
+    ? "image/*,.zip,application/zip,application/x-zip-compressed"
+    : undefined;
+
   return (
     <div>
       <div className="a-panel">
-        <h2>Add a screen or document</h2>
+        <h2>Add screens or documents</h2>
+        <p className="a-muted" style={{ fontSize: 13 }}>
+          Select multiple files for bulk upload. ZIP archives are accepted for both screens and documents.
+        </p>
         <div className="a-grid">
           <label htmlFor="asset-kind">Type
             <select id="asset-kind" value={kind} onChange={(e) => setKind(e.target.value as "screenshot" | "document")}>
@@ -93,23 +129,35 @@ export function FilesPanel({ deliveryId, assets, onChanged }: {
               <option value="document">Handover document</option>
             </select>
           </label>
-          <label htmlFor="asset-title">Title
-            <input id="asset-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
-          </label>
-          <label htmlFor="asset-desc">Description (optional)
-            <input id="asset-desc" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} />
-          </label>
-          <label htmlFor="asset-file">File (50 MB maximum)
+          {files.length <= 1 && (
+            <>
+              <label htmlFor="asset-title">Title{files.length > 0 ? "" : " (auto-named for bulk uploads)"}
+                <input id="asset-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
+              </label>
+              <label htmlFor="asset-desc">Description (optional)
+                <input id="asset-desc" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} />
+              </label>
+            </>
+          )}
+          {files.length > 1 && (
+            <p className="a-muted" style={{ fontSize: 13 }}>
+              {files.length} files selected — each file is titled from its filename.
+            </p>
+          )}
+          <label htmlFor="asset-file">Files (50 MB each, select multiple)
             <input
               key={fileKey}
               id="asset-file"
               type="file"
-              accept={kind === "screenshot" ? "image/*" : undefined}
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              multiple
+              accept={fileAccept}
+              onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
             />
           </label>
         </div>
-        <button type="button" className="a-btn" disabled={busy} onClick={() => void upload()}>Upload</button>
+        <button type="button" className="a-btn" disabled={busy} onClick={() => void upload()}>
+          {busy ? progress || "Uploading…" : files.length > 1 ? `Upload ${files.length} files` : "Upload"}
+        </button>
         {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       </div>
 
@@ -310,6 +358,142 @@ export function PreviewPanel({ deliveryId, dirty }: { deliveryId: string; dirty:
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/* ——— Gift items ——— */
+
+export function GiftItemsPanel({ deliveryId, items, onChanged }: {
+  deliveryId: string; items: GiftItemRecord[]; onChanged: () => Promise<void>;
+}) {
+  const [msg, setMsg] = useState<Msg>(null);
+  const [busy, setBusy] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileKey, setFileKey] = useState(0);
+  const [progress, setProgress] = useState("");
+
+  const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
+
+  function checkFile(f: File): string | null {
+    if (f.size === 0) return `"${f.name}" is empty.`;
+    if (f.size > MAX_FILE_BYTES) return `"${f.name}" exceeds 50 MB.`;
+    return null; // Any file type is accepted for gift items
+  }
+
+  async function upload() {
+    if (files.length === 0) { setMsg({ kind: "error", text: "Choose one or more files." }); return; }
+    if (files.length === 1 && title.trim() === "") { setMsg({ kind: "error", text: "Give the gift item a title." }); return; }
+
+    for (const f of files) {
+      const problem = checkFile(f);
+      if (problem) { setMsg({ kind: "error", text: problem }); return; }
+    }
+
+    setBusy(true);
+    let uploaded = 0;
+    const total = files.length;
+    try {
+      let nextOrder = sorted.length ? Math.max(...sorted.map((a) => a.sort_order)) + 1 : 0;
+      for (const f of files) {
+        setProgress(`Uploading ${++uploaded} of ${total}: ${f.name}`);
+        const fileTitle = files.length === 1
+          ? title.trim().slice(0, 120)
+          : f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").slice(0, 120) || `Gift ${uploaded}`;
+        await addGiftItem(deliveryId, {
+          title: fileTitle,
+          description: files.length === 1 ? (description.trim() || null) : null,
+          file: f,
+          sortOrder: nextOrder++,
+        });
+      }
+      const word = total === 1 ? "gift item" : `${total} gift items`;
+      setMsg({ kind: "ok", text: `Added ${word}. They appear in the gift box when gift reveal is on.` });
+      setTitle(""); setDescription(""); setFiles([]); setFileKey((k) => k + 1);
+      await onChanged();
+    } catch (e) {
+      setMsg({ kind: "error", text: `${errText(e)} (${uploaded} of ${total} uploaded before the error)` });
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  }
+
+  async function remove(item: GiftItemRecord) {
+    try { await deleteGiftItem(item); await onChanged(); setMsg({ kind: "ok", text: `Removed "${item.title}".` }); }
+    catch (e) { setMsg({ kind: "error", text: errText(e) }); }
+  }
+
+  async function openItem(item: GiftItemRecord) {
+    try {
+      const url = await signAsset(item.storage_path);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) { setMsg({ kind: "error", text: errText(e) }); }
+  }
+
+  return (
+    <div>
+      <div className="a-panel">
+        <h2>Add gift items</h2>
+        <p className="a-muted" style={{ fontSize: 13 }}>
+          Gift items appear inside the gift box when the client opens it. Any file type, any number.
+          Select multiple files for bulk upload. ZIP archives are accepted.
+        </p>
+        <div className="a-grid">
+          {files.length <= 1 && (
+            <>
+              <label htmlFor="gift-title">Title{files.length > 0 ? "" : " (auto-named for bulk uploads)"}
+                <input id="gift-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
+              </label>
+              <label htmlFor="gift-desc">Description (optional)
+                <input id="gift-desc" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} />
+              </label>
+            </>
+          )}
+          {files.length > 1 && (
+            <p className="a-muted" style={{ fontSize: 13 }}>
+              {files.length} files selected — each is titled from its filename.
+            </p>
+          )}
+          <label htmlFor="gift-file">Files (50 MB each, any type)
+            <input
+              key={fileKey}
+              id="gift-file"
+              type="file"
+              multiple
+              onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
+            />
+          </label>
+        </div>
+        <button type="button" className="a-btn" disabled={busy} onClick={() => void upload()}>
+          {busy ? progress || "Uploading…" : files.length > 1 ? `Upload ${files.length} items` : "Upload gift item"}
+        </button>
+        {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      </div>
+
+      <div className="a-panel">
+        <h2>Gift items in this delivery</h2>
+        {sorted.length === 0 && <p className="a-muted">No gift items yet. Add files that appear inside the gift box.</p>}
+        <ul className="a-list">
+          {sorted.map((item) => (
+            <li key={item.id} className="a-row">
+              <div>
+                <strong>{item.title}</strong>
+                <p className="a-muted" style={{ fontSize: 13, margin: "2px 0 0" }}>
+                  {item.file_name} · {(item.size_bytes / 1024 / 1024).toFixed(1)} MB
+                  {item.description ? ` · ${item.description}` : ""}
+                </p>
+              </div>
+              <div className="a-actions">
+                <button type="button" className="a-btn a-btn--quiet a-btn--small" onClick={() => void openItem(item)}>Open</button>
+                <ConfirmButton label="Remove" confirmLabel="Remove item" onConfirm={() => remove(item)} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

@@ -249,6 +249,56 @@ export async function deleteAsset(asset: AssetRecord): Promise<void> {
   await supabase.storage.from(BUCKET).remove([asset.storage_path]);
 }
 
+/* ——— Gift items ——— */
+
+export interface GiftItemRecord {
+  id: string;
+  delivery_id: string;
+  title: string;
+  description: string | null;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  sort_order: number;
+}
+
+export async function listGiftItems(deliveryId: string): Promise<GiftItemRecord[]> {
+  return must(await supabase.from("delivery_gift_items")
+    .select("id, delivery_id, title, description, storage_path, file_name, mime_type, size_bytes, sort_order")
+    .eq("delivery_id", deliveryId)
+    .order("sort_order").order("created_at")) as GiftItemRecord[];
+}
+
+export async function addGiftItem(deliveryId: string, input: {
+  title: string; description: string | null; file: File; sortOrder: number;
+}): Promise<void> {
+  const safe = input.file.name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "").slice(0, 120) || "file";
+  const random = Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const path = `${deliveryId}/gift/${random}-${safe}`;
+  const up = await supabase.storage.from(BUCKET).upload(path, input.file, { contentType: input.file.type, upsert: false });
+  if (up.error) throw new Error("upload");
+  const row = await supabase.from("delivery_gift_items").insert({
+    delivery_id: deliveryId,
+    title: input.title,
+    description: input.description,
+    storage_path: path,
+    file_name: input.file.name.slice(0, 200),
+    mime_type: input.file.type,
+    size_bytes: input.file.size,
+    sort_order: input.sortOrder,
+  });
+  if (row.error) {
+    await supabase.storage.from(BUCKET).remove([path]);
+    throw Object.assign(new Error(row.error.message), { code: row.error.code });
+  }
+}
+
+export async function deleteGiftItem(item: GiftItemRecord): Promise<void> {
+  must(await supabase.from("delivery_gift_items").delete().eq("id", item.id).select("id").single());
+  await supabase.storage.from(BUCKET).remove([item.storage_path]);
+}
+
 /* ——— Private links ——— */
 
 export async function listLinks(deliveryId: string): Promise<TokenRecord[]> {

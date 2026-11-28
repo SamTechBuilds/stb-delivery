@@ -69,11 +69,22 @@ export interface Asset {
   url?: string | null;
 }
 
+export interface GiftItem {
+  id: string;
+  title: string;
+  description: string | null;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  url?: string | null;
+}
+
 export interface DeliveryPayload {
   delivery: DeliveryInfo;
   support: SupportInfo | null;
   card: CardInfo | null;
   assets: Asset[];
+  gift_items: GiftItem[];
   preview: boolean;
 }
 

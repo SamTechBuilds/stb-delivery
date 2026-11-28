@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
-  getDelivery, listAssets, listLinks, listSupportPeriods, recentEvents, setStatus, updateDelivery,
-  type AssetRecord, type DeliveryRecord, type EventRecord, type SupportPeriodRecord, type TokenRecord,
+  getDelivery, listAssets, listGiftItems, listLinks, listSupportPeriods, recentEvents, setStatus, updateDelivery,
+  type AssetRecord, type DeliveryRecord, type EventRecord, type GiftItemRecord, type SupportPeriodRecord, type TokenRecord,
 } from "../data";
 import { buildPatch, formFromRecord, isDirty, type EditorForm, type FormErrors } from "../lib/editor";
 import { visibilityLabel } from "../lib/stats";
+import { publicUrl } from "../lib/slugs";
+import { privateLink, randomToken, sha256Hex, tokenHint } from "../lib/tokens";
 import { friendlyError } from "../lib/errors";
-import { ConfirmButton, Notice, PageHead, StatusChip, formatDate } from "../ui";
+import { ConfirmButton, Notice, PageHead, StatusChip, formatDate, origin } from "../ui";
 import { BuilderPanel } from "./DeliveryBuilder";
-import { ActivityPanel, FilesPanel, LinksPanel, PreviewPanel } from "./DeliveryTools";
+import { ActivityPanel, FilesPanel, GiftItemsPanel, LinksPanel, PreviewPanel } from "./DeliveryTools";
+import { issueLink } from "../data";
 
-type Tab = "details" | "builder" | "files" | "links" | "preview" | "activity";
+type Tab = "details" | "builder" | "files" | "gift" | "links" | "preview" | "activity";
 const TABS: { id: Tab; label: string }[] = [
   { id: "details", label: "Details" },
   { id: "builder", label: "Builder" },
   { id: "files", label: "Screens and files" },
+  { id: "gift", label: "Gift items" },
   { id: "links", label: "Private links" },
   { id: "preview", label: "Preview" },
   { id: "activity", label: "Activity" },
@@ -25,6 +29,7 @@ interface Loaded {
   record: DeliveryRecord;
   saved: EditorForm;
   assets: AssetRecord[];
+  giftItems: GiftItemRecord[];
   links: TokenRecord[];
   events: EventRecord[];
   periods: SupportPeriodRecord[];
@@ -39,13 +44,15 @@ export function DeliveryEditor() {
   const [notice, setNotice] = useState<{ kind: "error" | "ok" | "info"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const fetchAll = useCallback(async (): Promise<Loaded> => {
     const record = await getDelivery(id);
-    const [assets, links, events, periods] = await Promise.all([
-      listAssets(id), listLinks(id), recentEvents(id), listSupportPeriods(record.project_id),
+    const [assets, giftItems, links, events, periods] = await Promise.all([
+      listAssets(id), listGiftItems(id).catch(() => [] as GiftItemRecord[]), listLinks(id), recentEvents(id), listSupportPeriods(record.project_id),
     ]);
-    return { record, saved: formFromRecord(record), assets, links, events, periods };
+    return { record, saved: formFromRecord(record), assets, giftItems, links, events, periods };
   }, [id]);
 
   const apply = useCallback((l: Loaded) => {
@@ -104,9 +111,32 @@ export function DeliveryEditor() {
     setBusy(true);
     try {
       await setStatus(id, next);
-      const words = { draft: "Moved to drafts. The public page is closed.", published: "Published. The public page is live.", archived: "Archived. The public page is closed. Private links are kept and work again once restored and published." };
-      setNotice({ kind: "ok", text: words[next] });
-      await reload();
+      if (next === "published") {
+        // After publishing, generate the share URL
+        const freshData = await fetchAll();
+        apply(freshData);
+        const rec = freshData.record;
+        if (rec.slug) {
+          // Public slug URL
+          setShareUrl(publicUrl(rec.slug, origin()));
+        } else {
+          // No slug — create a private link automatically
+          const token = randomToken();
+          const hash = await sha256Hex(token);
+          await issueLink(id, {
+            tokenHash: hash, hint: tokenHint(token), kind: "client", label: "Auto-generated on publish", expiresAt: null,
+          });
+          setShareUrl(privateLink(token, origin()));
+          await reload();
+        }
+        setNotice({ kind: "ok", text: "Published! Share the link below with your client." });
+        setLinkCopied(false);
+      } else {
+        const words = { draft: "Moved to drafts. The public page is closed.", archived: "Archived. The public page is closed. Private links are kept and work again once restored and published." };
+        setNotice({ kind: "ok", text: words[next] });
+        setShareUrl(null);
+        await reload();
+      }
     } catch (e) {
       setNotice({ kind: "error", text: friendlyError(e as { code?: string; message?: string }) });
     } finally {
@@ -150,6 +180,41 @@ export function DeliveryEditor() {
       {dirty && <Notice kind="info">You have unsaved changes. Publishing is available after you save.</Notice>}
       {notice && <Notice kind={notice.kind}>{notice.text}</Notice>}
 
+      {/* Share link banner — shown after publishing or when already published */}
+      {(shareUrl || record.status === "published") && (
+        <div className="a-banner a-banner--ok" role="status" style={{ marginTop: 12, padding: "16px 20px" }}>
+          <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: 15 }}>
+            {shareUrl ? "🔗 Share this link with your client" : "🔗 Delivery is live"}
+          </p>
+          <input
+            readOnly
+            value={shareUrl || (record.slug ? publicUrl(record.slug, origin()) : "")}
+            aria-label="Share link"
+            style={{ width: "100%", fontSize: 14, padding: "8px 12px", borderRadius: 6, border: "1px solid #ccc", background: "#f9f9f9" }}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <div className="a-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="a-btn a-btn--small"
+              onClick={() => {
+                const url = shareUrl || (record.slug ? publicUrl(record.slug, origin()) : "");
+                if (url) {
+                  void navigator.clipboard?.writeText(url);
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 2000);
+                }
+              }}
+            >
+              {linkCopied ? "✓ Copied!" : "Copy link"}
+            </button>
+            {shareUrl && !record.slug && (
+              <span className="a-muted" style={{ fontSize: 13 }}>This is a private link. Copy it now — the token is not stored in plain text.</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div role="tablist" aria-label="Delivery sections" className="a-tabs">
         {TABS.map((t) => (
           <button
@@ -175,6 +240,7 @@ export function DeliveryEditor() {
           <BuilderPanel form={form} errors={errors} update={update} />
         )}
         {tab === "files" && <FilesPanel deliveryId={id} assets={loaded.assets} onChanged={reload} />}
+        {tab === "gift" && <GiftItemsPanel deliveryId={id} items={loaded.giftItems} onChanged={reload} />}
         {tab === "links" && <LinksPanel deliveryId={id} links={loaded.links} status={record.status} onChanged={reload} />}
         {tab === "preview" && <PreviewPanel deliveryId={id} dirty={dirty} />}
         {tab === "activity" && <ActivityPanel events={loaded.events} />}

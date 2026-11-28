@@ -334,6 +334,77 @@ a { color: inherit; }
 .page__footer { max-width: 68rem; margin: 0 auto; padding: 3.5rem 1.25rem max(3rem, env(safe-area-inset-bottom)); color: var(--slate); font-size: 0.9375rem; display: grid; gap: 0.75rem; }
 .page__closing { font-family: var(--serif); font-size: clamp(1.4rem, 4.5vw, 1.85rem); color: var(--indigo); line-height: 1.25; max-width: 36rem; white-space: pre-line; }
 
+/* ---------- Gift items ---------- */
+.gift-items {
+  margin-top: 2rem;
+  animation: gift-items-appear 0.6s ease-out both;
+}
+@keyframes gift-items-appear {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.gift-items__title {
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  color: var(--on-wrap);
+  margin-bottom: 1rem;
+  text-align: center;
+}
+.gift-items__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+  max-width: 32rem;
+  margin: 0 auto;
+}
+.gift-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--white, rgba(255,255,255,0.08));
+  border: 1px solid var(--line, rgba(255,255,255,0.12));
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  transition: transform 0.15s ease;
+}
+.gift-item:hover { transform: translateY(-1px); }
+.gift-item__icon { font-size: 1.5rem; flex-shrink: 0; }
+.gift-item__info { flex: 1; min-width: 0; }
+.gift-item__name {
+  display: block;
+  font-size: 0.9375rem;
+  color: var(--on-wrap);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gift-item__desc {
+  font-size: 0.8125rem;
+  color: var(--on-wrap-soft, rgba(255,255,255,0.65));
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gift-item__meta {
+  font-size: 0.75rem;
+  color: var(--on-wrap-soft, rgba(255,255,255,0.5));
+}
+.btn--gift-download {
+  flex-shrink: 0;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  border: 1px solid var(--on-wrap-soft, rgba(255,255,255,0.3));
+  background: transparent;
+  color: var(--on-wrap);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn--gift-download:hover { background: rgba(255,255,255,0.1); }
+
 /* ---------- Notices ---------- */
 .notice { max-width: 30rem; display: grid; gap: 1rem; justify-items: center; }
 .notice h1 { font-size: clamp(1.8rem, 6vw, 2.4rem); }

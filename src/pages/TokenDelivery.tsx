@@ -14,7 +14,7 @@ import {
   readTokenWithFallback,
   requestFile,
 } from "../api";
-import type { ApiError, Asset, DeliveryPayload } from "../types";
+import type { ApiError, Asset, GiftItem, DeliveryPayload } from "../types";
 import { GiftBox } from "../components/GiftBox";
 import { VisitingCard } from "../components/VisitingCard";
 import { ProjectPage } from "../components/ProjectPage";
@@ -99,7 +99,7 @@ export function TokenDelivery() {
   };
 
   const download = useCallback(
-    async (asset: Asset) => {
+    async (asset: Asset | GiftItem) => {
       if (!token) return;
       const { url } = await requestFile(token, asset.id);
       window.location.assign(url);
@@ -136,9 +136,11 @@ export function TokenDelivery() {
           </p>
           <GiftBox
             delivery={data.delivery}
+            giftItems={data.gift_items}
             stage={giftStage}
             onOpen={open}
             onSkip={toPage}
+            onRequestFile={download}
           >
             {stage === "card" && (
               <div className="card-stage">
