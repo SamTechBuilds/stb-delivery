@@ -11,7 +11,7 @@ function payload(over: Partial<DeliveryPayload["delivery"]> = {}): DeliveryPaylo
     delivery: {
       theme: "midnight", client_name: "Ameer", business_name: null, welcome_title: null, welcome_message: null,
       project_title: "Parts site", project_summary: null, live_url: null, tech_list: [], completed_on: null,
-      video_url: "https://www.youtube.com/watch?v=abcdefghijk", handover_checklist: [{ label: "Domain handed over" }],
+      video_url: "https://youtube.com", handover_checklist: [{ label: "Domain handed over" }],
       support_contact_note: null, closing_message: null,
       ...over,
     },
@@ -19,6 +19,7 @@ function payload(over: Partial<DeliveryPayload["delivery"]> = {}): DeliveryPaylo
     card: { brand_name: "Sam Tech Builds", tagline: null, person_name: null, role_title: null, phone: null, whatsapp: null,
       email: null, website: null, location: null, services: [], socials: [], support_hours: null },
     assets: [],
+    gift_items: [],
     preview: false,
   };
 }

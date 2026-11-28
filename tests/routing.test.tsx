@@ -57,6 +57,7 @@ const MOCK_PAYLOAD: DeliveryPayload = {
     support_hours: null,
   },
   assets: [],
+  gift_items: [],
   preview: false,
 };
 

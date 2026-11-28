@@ -54,6 +54,7 @@ export function payload(overrides: Partial<DeliveryPayload> = {}): DeliveryPaylo
       { id: "00000000-0000-4000-8000-000000000004", kind: "document", title: "Owner's guide", description: "How to update your menu, specials and opening hours.", file_name: "owners-guide.pdf", mime_type: "application/pdf", size_bytes: 1_240_000 },
       { id: "00000000-0000-4000-8000-000000000005", kind: "document", title: "Brand assets", description: null, file_name: "brand-assets.zip", mime_type: "application/zip", size_bytes: 8_600_000 },
     ],
+    gift_items: [],
     ...overrides,
   };
 }
