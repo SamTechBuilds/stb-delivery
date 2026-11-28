@@ -84,7 +84,7 @@ export interface DeliveryPayload {
   support: SupportInfo | null;
   card: CardInfo | null;
   assets: Asset[];
-  gift_items: GiftItem[];
+  gift_items?: GiftItem[];
   preview: boolean;
 }
 
